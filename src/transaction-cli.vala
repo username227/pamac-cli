@@ -352,6 +352,24 @@ namespace Pamac {
 			return false;
 		}
 
+		protected override async bool ask_unverified_aur_soname_build (GenericArray<string> warnings) {
+			print_warning ("Warning: AUR shared-library compatibility cannot be verified before building.");
+			foreach (unowned string warning in warnings) {
+				print_warning ("  " + warning);
+			}
+			print_warning ("The completed package must pass normal dependency validation before installation.");
+			print_warning ("Choosing No uses normal Pamac resolution and may propose removing dependent packages.");
+			if (no_confirm || dry_run) {
+				return false;
+			}
+			return ask_user ("Build first and verify these AUR packages");
+		}
+
+		// Without a terminal prompt, never implicitly choose a removal path.
+		protected override bool permit_normal_aur_soname_fallback () {
+			return !no_confirm;
+		}
+
 		protected override async bool ask_import_key (string pkgname, string key, string? owner) {
 			stdout.printf ("%s.\n".printf (dgettext (null, "The PGP key %1$s is needed to verify %2$s source files").printf (key, pkgname)));
 			if (no_confirm) {
