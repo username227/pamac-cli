@@ -143,20 +143,22 @@ namespace Pamac {
 				action_progress_completed = false;
 				display_current_line ();
 			}
+			// Ignore all further callbacks for an already completed action.
+			if (action_progress_completed) {
+				return;
+			}
 			int width = get_term_width () - action.char_count () - 1;
 			string current_status = "[%s]".printf (status);
-			if (!Posix.isatty (Posix.STDOUT_FILENO) || width <= current_status.length) {
-				// Redrawing would wrap or produce noisy output in a pipe.
-				// Print the completed action only once.
-				if (progress == 1 && !action_progress_completed) {
-					current_line = "";
-					stdout.printf ("%s %s\n", action, current_status);
-					action_progress_completed = true;
-				}
-			} else if (progress == 1) {
+			bool can_redraw = Posix.isatty (Posix.STDOUT_FILENO) && width > current_status.length;
+			if (progress == 1) {
 				current_line = "";
-				stdout.printf ("%s %*s\n".printf (action, width, current_status));
-			} else {
+				if (can_redraw) {
+					stdout.printf ("%s %*s\n".printf (action, width, current_status));
+				} else {
+					stdout.printf ("%s %s\n", action, current_status);
+				}
+				action_progress_completed = true;
+			} else if (can_redraw) {
 				current_line = "%s %*s".printf (action, width, current_status);
 				stdout.printf (current_line);
 				stdout.printf ("\r");
