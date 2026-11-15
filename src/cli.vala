@@ -774,7 +774,20 @@ namespace Pamac {
 					}
 				}
 				init_transaction ();
-				checkupdates (quiet, refresh_tmp_files_dbs, download_updates);
+				// Reuse the shared worker only for the exact default profile.
+				// Explicit AUR/VCS options, custom AURDEST/builddir, root,
+				// and side-effecting flags retain their original direct path.
+				// This CLI disables Flatpak while pamac-checkupdates honors
+				// pamac.conf; that configuration is not share-compatible.
+				var shared_config = new Config ("/etc/pamac.conf");
+				bool shared_compatible =
+					!aur && !no_aur && !devel && !no_devel &&
+					builddir == null && !refresh_tmp_files_dbs &&
+					!download_updates && Posix.geteuid () != 0 &&
+					Environment.get_variable ("AURDEST") == null &&
+					!shared_config.enable_flatpak;
+				checkupdates (quiet, refresh_tmp_files_dbs, download_updates,
+					shared_compatible);
 			} else if (args[1] == "update" || args[1] == "upgrade") {
 				bool aur = false;
 				bool no_aur = false;
@@ -2038,9 +2051,63 @@ namespace Pamac {
 			}
 		}
 
-		void checkupdates (bool quiet, bool refresh_tmp_files_dbs, bool download_updates) {
-			var updates = database.get_updates ();
+		void checkupdates (bool quiet, bool refresh_tmp_files_dbs, bool download_updates,
+			bool shared_compatible = false) {
+			int shared_status = -1;
+			if (shared_compatible) {
+				try {
+					// The tested pamac-checkupdates bridge joins the one shared
+					// worker and waits for its completion signal. This process
+					// consumes its output but retains native full-CLI formatting.
+					var checker = new Subprocess.newv (
+						{"/usr/bin/pamac-checkupdates"},
+						SubprocessFlags.STDOUT_PIPE | SubprocessFlags.STDERR_PIPE);
+					string? lines;
+					string? diagnostics;
+					checker.communicate_utf8 (null, out lines, out diagnostics);
+					if (checker.get_if_exited ()) {
+						shared_status = checker.get_exit_status ();
+					}
+					if (shared_status != 0 && shared_status != 100) {
+						// 101, 102 and 103 mean incomplete, not up-to-date.
+						// Never silently rerun VCS discovery after a shared
+						// request; it could race the coordinator's worker.
+						exit_status = shared_status >= 101 &&
+							shared_status <= 103 ? shared_status : 103;
+						stderr.printf ("Shared update check incomplete (status %d).\\n",
+							exit_status);
+						if (diagnostics != null && diagnostics.strip () != "") {
+							stderr.printf ("%s\\n", diagnostics.strip ());
+						}
+						return;
+					}
+					// Result validation: a complete update list cannot be empty.
+					bool has_lines = lines != null && lines.strip () != "";
+					if ((shared_status == 100) != has_lines) {
+						exit_status = 103;
+						stderr.printf ("Shared update list is incomplete.\\n");
+						return;
+					}
+				} catch (Error e) {
+					exit_status = 103;
+					stderr.printf ("Shared update request failed: %s\\n", e.message);
+					return;
+				}
+			}
+			// Keep full native typed lists (ignored packages, AUR out-of-date,
+			// repo names, verbose formatting). Shared clients only read VCS
+			// .SRCINFO under flock; they do not rerun makepkg or clone.
+			var updates = shared_compatible ?
+				database.get_updates_after_shared_check () : database.get_updates ();
 			uint updates_nb = updates.repos_updates.length + updates.aur_updates.length + updates.flatpak_updates.length;
+			if (shared_compatible &&
+				(database.vcs_updates_deferred || !database.last_vcs_refresh_success ||
+				 (shared_status == 100 && updates_nb == 0) ||
+				 (shared_status == 0 && updates_nb > 0))) {
+				exit_status = 103;
+				stderr.printf ("Shared update snapshot changed; retry the check.\\n");
+				return;
+			}
 			if (updates_nb == 0) {
 				if (quiet) {
 					return;
