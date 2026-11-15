@@ -2872,11 +2872,9 @@ namespace Pamac {
 		}
 
 		void run_sysupgrade (bool force_refresh) {
-			// Unlike the GUI update-list path, the CLI's transaction path must
-			// explicitly refresh and await development-package sources.
-			transaction.refresh_vcs_before_upgrade =
-				database.config.check_aur_updates && database.config.check_aur_vcs_updates;
-			if (transaction.refresh_vcs_before_upgrade) {
+			// The shared AUR update query now performs and awaits the only VCS
+			// refresh. The CLI subscribes solely for visible per-package progress.
+			if (database.config.check_aur_updates && database.config.check_aur_vcs_updates) {
 				database.vcs_refresh_progress.connect ((pkgname, current, total, stage) => {
 					if (stage == "empty") {
 						stdout.printf ("No installed development packages to check.\n");
