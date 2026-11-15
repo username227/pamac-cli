@@ -777,15 +777,14 @@ namespace Pamac {
 				// Reuse the shared worker only for the exact default profile.
 				// Explicit AUR/VCS options, custom AURDEST/builddir, root,
 				// and side-effecting flags retain their original direct path.
-				// This CLI disables Flatpak while pamac-checkupdates honors
-				// pamac.conf; that configuration is not share-compatible.
+				// The coordinator returns a category-filtered repo/AUR view;
+				// Flatpak remains handled by the user\u0027s separate update path.
 				var shared_config = new Config ("/etc/pamac.conf");
 				bool shared_compatible =
 					!aur && !no_aur && !devel && !no_devel &&
 					builddir == null && !refresh_tmp_files_dbs &&
 					!download_updates && Posix.geteuid () != 0 &&
 					Environment.get_variable ("AURDEST") == null &&
-					!shared_config.enable_flatpak &&
 					!shared_config.download_updates;
 				checkupdates (quiet, refresh_tmp_files_dbs, download_updates,
 					shared_compatible);
@@ -2064,7 +2063,7 @@ namespace Pamac {
 					// Read-only join: never start a worker that can sync DBs
 					// as a side effect of full CLI "checkupdates".
 					var checker = new Subprocess.newv (
-						{"/usr/bin/pamac-checkupdates", "--join-only"},
+						{"/usr/bin/pamac-checkupdates", "--join-only", "--repo-aur"},
 						SubprocessFlags.STDOUT_PIPE | SubprocessFlags.STDERR_PIPE);
 					string? lines;
 					string? diagnostics;
