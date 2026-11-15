@@ -774,11 +774,11 @@ namespace Pamac {
 					}
 				}
 				init_transaction ();
-				// Reuse the shared worker only for the exact default profile.
+				// Join only an already-running or cached default worker.
 				// Explicit AUR/VCS options, custom AURDEST/builddir, root,
 				// and side-effecting flags retain their original direct path.
-				// The coordinator returns a category-filtered repo/AUR view;
-				// Flatpak remains handled by the user\u0027s separate update path.
+				// The coordinator returns its categorized repo/AUR subset;
+				// Flatpak remains outside the full CLI.
 				var shared_config = new Config ("/etc/pamac.conf");
 				bool shared_compatible =
 					!aur && !no_aur && !devel && !no_devel &&
