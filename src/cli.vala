@@ -2074,10 +2074,10 @@ namespace Pamac {
 						// request; it could race the coordinator's worker.
 						exit_status = shared_status >= 101 &&
 							shared_status <= 103 ? shared_status : 103;
-						stderr.printf ("Shared update check incomplete (status %d).\\n",
+						stderr.printf ("Shared update check incomplete (status %d).\n",
 							exit_status);
 						if (diagnostics != null && diagnostics.strip () != "") {
-							stderr.printf ("%s\\n", diagnostics.strip ());
+							stderr.printf ("%s\n", diagnostics.strip ());
 						}
 						return;
 					}
@@ -2085,12 +2085,12 @@ namespace Pamac {
 					bool has_lines = lines != null && lines.strip () != "";
 					if ((shared_status == 100) != has_lines) {
 						exit_status = 103;
-						stderr.printf ("Shared update list is incomplete.\\n");
+						stderr.printf ("Shared update list is incomplete.\n");
 						return;
 					}
 				} catch (Error e) {
 					exit_status = 103;
-					stderr.printf ("Shared update request failed: %s\\n", e.message);
+					stderr.printf ("Shared update request failed: %s\n", e.message);
 					return;
 				}
 			}
@@ -2105,7 +2105,7 @@ namespace Pamac {
 				 (shared_status == 100 && updates_nb == 0) ||
 				 (shared_status == 0 && updates_nb > 0))) {
 				exit_status = 103;
-				stderr.printf ("Shared update snapshot changed; retry the check.\\n");
+				stderr.printf ("Shared update snapshot changed; retry the check.\n");
 				return;
 			}
 			if (updates_nb == 0) {
