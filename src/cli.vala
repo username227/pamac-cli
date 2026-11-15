@@ -2886,6 +2886,9 @@ namespace Pamac {
 						case "start":
 							description = "Checking package";
 							break;
+						case "waiting":
+							description = "Waiting for VCS cache lock";
+							break;
 						case "source":
 							description = "Refreshing source";
 							break;
