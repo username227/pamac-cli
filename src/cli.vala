@@ -785,7 +785,8 @@ namespace Pamac {
 					builddir == null && !refresh_tmp_files_dbs &&
 					!download_updates && Posix.geteuid () != 0 &&
 					Environment.get_variable ("AURDEST") == null &&
-					!shared_config.enable_flatpak;
+					!shared_config.enable_flatpak &&
+					!shared_config.download_updates;
 				checkupdates (quiet, refresh_tmp_files_dbs, download_updates,
 					shared_compatible);
 			} else if (args[1] == "update" || args[1] == "upgrade") {
