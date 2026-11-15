@@ -2054,6 +2054,7 @@ namespace Pamac {
 		void checkupdates (bool quiet, bool refresh_tmp_files_dbs, bool download_updates,
 			bool shared_compatible = false) {
 			int shared_status = -1;
+			string shared_output = "";
 			if (shared_compatible) {
 				try {
 					// The tested pamac-checkupdates bridge joins the one shared
@@ -2065,6 +2066,7 @@ namespace Pamac {
 					string? lines;
 					string? diagnostics;
 					checker.communicate_utf8 (null, out lines, out diagnostics);
+					shared_output = lines ?? "";
 					if (checker.get_if_exited ()) {
 						shared_status = checker.get_exit_status ();
 					}
@@ -2102,8 +2104,7 @@ namespace Pamac {
 			uint updates_nb = updates.repos_updates.length + updates.aur_updates.length + updates.flatpak_updates.length;
 			if (shared_compatible &&
 				(database.vcs_updates_deferred || !database.last_vcs_refresh_success ||
-				 (shared_status == 100 && updates_nb == 0) ||
-				 (shared_status == 0 && updates_nb > 0))) {
+				 !Database.updates_match_shared_output (updates, shared_output))) {
 				exit_status = 103;
 				stderr.printf ("Shared update snapshot changed; retry the check.\n");
 				return;
