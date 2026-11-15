@@ -2081,6 +2081,12 @@ namespace Pamac {
 						if (diagnostics != null && diagnostics.strip () != "") {
 							stderr.printf ("%s\n", diagnostics.strip ());
 						}
+						// Show any safely discovered repository/AUR updates,
+						// but retain the incomplete exit code. A partial list
+						// is never equivalent to "everything is current".
+						if (lines != null && lines != "") {
+							stdout.printf ("%s", lines);
+						}
 						return;
 					}
 					// Result validation: a complete update list cannot be empty.
