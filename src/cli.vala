@@ -2872,6 +2872,51 @@ namespace Pamac {
 		}
 
 		void run_sysupgrade (bool force_refresh) {
+			// Unlike the GUI update-list path, the CLI's transaction path must
+			// explicitly refresh and await development-package sources.
+			transaction.refresh_vcs_before_upgrade =
+				database.config.check_aur_updates && database.config.check_aur_vcs_updates;
+			if (transaction.refresh_vcs_before_upgrade) {
+				database.vcs_refresh_progress.connect ((pkgname, current, total, stage) => {
+					if (stage == "empty") {
+						stdout.printf ("No installed development packages to check.\n");
+						stdout.flush ();
+						return;
+					}
+					string description;
+					switch (stage) {
+						case "start":
+							description = "Checking package";
+							break;
+						case "source":
+							description = "Refreshing source";
+							break;
+						case "metadata":
+							description = "Updating package metadata";
+							break;
+						case "done":
+							description = "Finished";
+							break;
+						case "missing":
+							description = "Not found in AUR, skipped";
+							break;
+						case "clone-failed":
+							description = "Failed to fetch AUR build files";
+							break;
+						case "source-failed":
+							description = "Failed to refresh source";
+							break;
+						case "metadata-failed":
+							description = "Failed to update package metadata";
+							break;
+						default:
+							description = stage;
+							break;
+					}
+					stdout.printf ("[%u/%u] %s: %s\n", current, total, pkgname, description);
+					stdout.flush ();
+				});
+			}
 			transaction.add_pkgs_to_upgrade (force_refresh);
 			run_transaction ();
 		}
