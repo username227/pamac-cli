@@ -2109,6 +2109,18 @@ namespace Pamac {
 				stderr.printf ("Shared update snapshot changed; retry the check.\n");
 				return;
 			}
+			// An explicit/custom-profile check must also distinguish an
+			// incomplete VCS scan from a confirmed "up to date" result.
+			int incomplete_status = database.vcs_updates_deferred ? 101 :
+				(!database.last_vcs_refresh_success ? 102 : 0);
+			if (incomplete_status != 0) {
+				exit_status = incomplete_status;
+				stderr.printf ("Development package check incomplete (status %d).\n",
+					incomplete_status);
+				if (updates_nb == 0) {
+					return;
+				}
+			}
 			if (updates_nb == 0) {
 				if (quiet) {
 					return;
@@ -2189,14 +2201,17 @@ namespace Pamac {
 					}
 				}
 			} else {
-				// special status when updates are available
-				exit_status = 100;
-				// refresh tmp files dbs
-				if (refresh_tmp_files_dbs) {
+				// Complete checks with updates return 100; partial checks
+				// retain 101/102 even if repo updates were also discovered.
+				if (incomplete_status == 0) {
+					exit_status = 100;
+				}
+				// Do not pre-download from an incomplete result.
+				if (refresh_tmp_files_dbs && incomplete_status == 0) {
 					database.refresh_tmp_files_dbs ();
 				}
 				// download updates
-				if (download_updates) {
+				if (download_updates && incomplete_status == 0) {
 					var loop = new MainLoop ();
 					transaction.download_updates_async.begin (() => {
 						loop.quit ();
