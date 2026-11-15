@@ -2068,7 +2068,7 @@ namespace Pamac {
 						SubprocessFlags.STDOUT_PIPE | SubprocessFlags.STDERR_PIPE);
 					string? lines;
 					string? diagnostics;
-					checker.communicate_utf8 (null, out lines, out diagnostics);
+					checker.communicate_utf8 (null, null, out lines, out diagnostics);
 					shared_output = lines ?? "";
 					if (checker.get_if_exited ()) {
 						shared_status = checker.get_exit_status ();
