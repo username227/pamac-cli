@@ -2061,8 +2061,10 @@ namespace Pamac {
 					// The tested pamac-checkupdates bridge joins the one shared
 					// worker and waits for its completion signal. This process
 					// consumes its output but retains native full-CLI formatting.
+					// Read-only join: never start a worker that can sync DBs
+					// as a side effect of full CLI "checkupdates".
 					var checker = new Subprocess.newv (
-						{"/usr/bin/pamac-checkupdates"},
+						{"/usr/bin/pamac-checkupdates", "--join-only"},
 						SubprocessFlags.STDOUT_PIPE | SubprocessFlags.STDERR_PIPE);
 					string? lines;
 					string? diagnostics;
@@ -2071,7 +2073,12 @@ namespace Pamac {
 					if (checker.get_if_exited ()) {
 						shared_status = checker.get_exit_status ();
 					}
-					if (shared_status != 0 && shared_status != 100) {
+					if (shared_status == 104) {
+						// No in-flight/cached default check is reusable.
+						// Run the native read-only CLI path. This is not a
+						// coordinator failure and does not create DB side effects.
+						shared_compatible = false;
+					} else if (shared_status != 0 && shared_status != 100) {
 						// 101, 102 and 103 mean incomplete, not up-to-date.
 						// Never silently rerun VCS discovery after a shared
 						// request; it could race the coordinator's worker.
@@ -2092,7 +2099,7 @@ namespace Pamac {
 					}
 					// Result validation: a complete update list cannot be empty.
 					bool has_lines = lines != null && lines.strip () != "";
-					if ((shared_status == 100) != has_lines) {
+					if (shared_compatible && (shared_status == 100) != has_lines) {
 						exit_status = 103;
 						stderr.printf ("Shared update list is incomplete.\n");
 						return;
