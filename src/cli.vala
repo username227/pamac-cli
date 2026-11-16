@@ -2051,10 +2051,43 @@ namespace Pamac {
 			}
 		}
 
+		void request_immediate_tray_check () {
+			try {
+				UpdateCoordinator coordinator = Bus.get_proxy_sync (
+					BusType.SESSION, "org.manjaro.pamac.UpdateCoordinator1",
+					"/org/manjaro/pamac/UpdateCoordinator1");
+				coordinator.recheck_after_transaction ();
+			} catch (Error e) {
+				message ("Could not request tray refresh: %s", e.message);
+			}
+		}
+
+		void publish_cli_tray_snapshot (uint64 epoch, Updates updates) {
+			if (epoch == 0) {
+				return;
+			}
+			string[] all_lines;
+			string[] repo_aur_lines;
+			Database.format_shared_update_lines (updates, out all_lines, out repo_aur_lines);
+			try {
+				UpdateCoordinator coordinator = Bus.get_proxy_sync (
+					BusType.SESSION, "org.manjaro.pamac.UpdateCoordinator1",
+					"/org/manjaro/pamac/UpdateCoordinator1");
+				if (!coordinator.publish_external_check (epoch, all_lines, repo_aur_lines)) {
+					// Package state changed while the CLI was checking.
+					// Publish nothing stale; obtain a new verified snapshot.
+					coordinator.recheck_after_transaction ();
+				}
+			} catch (Error e) {
+				message ("Could not publish CLI update snapshot: %s", e.message);
+			}
+		}
+
 		void checkupdates (bool quiet, bool refresh_tmp_files_dbs, bool download_updates,
 			bool shared_compatible = false) {
 			int shared_status = -1;
 			string shared_output = "";
+			uint64 tray_epoch = 0;
 			if (shared_compatible) {
 				try {
 					// The tested pamac-checkupdates bridge joins the one shared
@@ -2077,6 +2110,14 @@ namespace Pamac {
 						// Run the native read-only CLI path. This is not a
 						// coordinator failure and does not create DB side effects.
 						shared_compatible = false;
+						try {
+							UpdateCoordinator coordinator = Bus.get_proxy_sync (
+								BusType.SESSION, "org.manjaro.pamac.UpdateCoordinator1",
+								"/org/manjaro/pamac/UpdateCoordinator1");
+							tray_epoch = coordinator.begin_external_check ();
+						} catch (Error e) {
+							message ("Could not begin CLI tray snapshot: %s", e.message);
+						}
 					} else if (shared_status != 0 && shared_status != 100) {
 						// 101, 102 and 103 mean incomplete, not up-to-date.
 						// Never silently rerun VCS discovery after a shared
@@ -2133,6 +2174,11 @@ namespace Pamac {
 				if (updates_nb == 0) {
 					return;
 				}
+			}
+			// A complete default-profile native check can now update the
+			// tray immediately, without another repository/AUR/VCS scan.
+			if (incomplete_status == 0) {
+				publish_cli_tray_snapshot (tray_epoch, updates);
 			}
 			if (updates_nb == 0) {
 				if (quiet) {
@@ -2951,6 +2997,9 @@ namespace Pamac {
 						if (!success) {
 							exit_status = 1;
 						}
+						// Even a failed transaction may have installed some
+						// packages before failing; recompute the tray's status.
+						request_immediate_tray_check ();
 						loop.quit ();
 					});
 					return false;
@@ -2961,6 +3010,7 @@ namespace Pamac {
 					if (!success) {
 						exit_status = 1;
 					}
+					request_immediate_tray_check ();
 					loop.quit ();
 				});
 			}
