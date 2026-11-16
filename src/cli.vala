@@ -3009,27 +3009,62 @@ namespace Pamac {
 			run_transaction ();
 		}
 
-		void run_transaction (bool full_default_upgrade = false) {
+		// Keep Flatpak selection and installation separate from the
+		// pacman -> AUR workflow. Crucially, this second stage must never
+		// call get_updates() or repeat any AUR/VCS source discovery.
+		async bool run_transaction_stages_async (bool include_flatpak) {
+			var flatpak_updates = new GenericArray<FlatpakPackage> ();
+			bool flatpak_checked = true;
+			bool apply_flatpak = include_flatpak &&
+				!transaction.dry_run && !transaction.download_only;
+			if (apply_flatpak) {
+				stdout.printf ("Checking Flatpak updates...\\n");
+				stdout.flush ();
+				flatpak_checked = yield database.collect_flatpak_updates_async (flatpak_updates);
+				if (!flatpak_checked) {
+					stderr.printf ("Flatpak update discovery failed; continuing repository/AUR upgrades, but the final status cannot be verified.\\n");
+				}
+			}
+			bool success = yield transaction.run_async ();
+			if (!success || !flatpak_checked) {
+				return false;
+			}
+			if (apply_flatpak && flatpak_updates.length > 0) {
+				// The previous ALPM/AUR confirmation must not authorize a
+				// different Flatpak transaction. Prompt again unless --no-confirm.
+				transaction.begin_flatpak_upgrade_stage ();
+				foreach (unowned FlatpakPackage pkg in flatpak_updates) {
+					transaction.add_flatpak_to_upgrade (pkg);
+				}
+				stdout.printf ("\\nFlatpak updates (%u):\\n", flatpak_updates.length);
+				stdout.flush ();
+				success = yield transaction.run_async ();
+			}
+			return success;
+		}
+
+		void run_transaction (bool full_default_upgrade = false,
+			bool include_flatpak = false) {
 			uint64 tray_transaction_id = begin_tray_transaction ();
 			var loop = new MainLoop ();
+			// One D-Bus transaction lifecycle spans both package managers.
+			// There is never a post-operation AUR/VCS discovery pass.
 			if (Posix.geteuid () != 0) {
-				// let's time to pkttyagent to get registred
+				// Allow the polkit terminal agent to register.
 				Timeout.add (200, () => {
-					transaction.run_async.begin ((obj, res) => {
-						bool success = transaction.run_async.end (res);
+					run_transaction_stages_async.begin (include_flatpak, (obj, res) => {
+						bool success = run_transaction_stages_async.end (res);
 						if (!success) {
 							exit_status = 1;
 						}
-						// Even a failed transaction may have installed some
-						// packages before failing; recompute the tray's status.
 						finish_tray_transaction (tray_transaction_id, success, full_default_upgrade);
 						loop.quit ();
 					});
 					return false;
 				});
 			} else {
-				transaction.run_async.begin ((obj, res) => {
-					bool success = transaction.run_async.end (res);
+				run_transaction_stages_async.begin (include_flatpak, (obj, res) => {
+					bool success = run_transaction_stages_async.end (res);
 					if (!success) {
 						exit_status = 1;
 					}
@@ -3089,8 +3124,8 @@ namespace Pamac {
 			}
 			transaction.add_pkgs_to_upgrade (force_refresh);
 			// Only an unrestricted default-profile upgrade can establish that
-			// all actionable updates were applied. The CLI does not cover
-			// Flatpak updates, so those must be disabled in the default profile.
+			// all actionable updates were applied. Flatpak is included when
+			// enabled, and its discovery and installation must both succeed.
 			var default_config = new Config ("/etc/pamac.conf");
 			bool full_default_upgrade =
 				Posix.geteuid () != 0 &&
@@ -3098,13 +3133,15 @@ namespace Pamac {
 				!transaction.download_only && !transaction.dry_run &&
 				!transaction.no_refresh &&
 				Environment.get_variable ("AURDEST") == null &&
-				!default_config.check_flatpak_updates &&
+				(!default_config.check_flatpak_updates || default_config.enable_flatpak) &&
 				!default_config.download_updates &&
+				database.config.enable_flatpak == default_config.enable_flatpak &&
+				database.config.check_flatpak_updates == default_config.check_flatpak_updates &&
 				database.config.enable_aur == default_config.enable_aur &&
 				database.config.check_aur_updates == default_config.check_aur_updates &&
 				database.config.check_aur_vcs_updates == default_config.check_aur_vcs_updates &&
 				database.config.aur_build_dir == default_config.aur_build_dir;
-			run_transaction (full_default_upgrade);
+			run_transaction (full_default_upgrade, database.config.check_flatpak_updates);
 		}
 
 		public static int main (string[] args) {
