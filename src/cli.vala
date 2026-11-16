@@ -28,6 +28,7 @@ namespace Pamac {
 		GenericSet<string?> already_checked_aur_dep;
 		public Subprocess pkttyagent;
 		int term_width;
+		bool upgrade_has_temporary_ignores = false;
 
 		public Cli () {
 			exit_status = 0;
@@ -525,6 +526,7 @@ namespace Pamac {
 						}
 					}
 					if (ignore != null) {
+						upgrade_has_temporary_ignores = true;
 						foreach (unowned string name in ignore.split(",")) {
 							transaction.add_temporary_ignore_pkg (name);
 						}
@@ -2051,14 +2053,30 @@ namespace Pamac {
 			}
 		}
 
-		void request_immediate_tray_check () {
+		uint64 begin_tray_transaction () {
 			try {
 				UpdateCoordinator coordinator = Bus.get_proxy_sync (
 					BusType.SESSION, "org.manjaro.pamac.UpdateCoordinator1",
 					"/org/manjaro/pamac/UpdateCoordinator1");
-				coordinator.recheck_after_transaction ();
+				return coordinator.begin_transaction ();
 			} catch (Error e) {
-				message ("Could not request tray refresh: %s", e.message);
+				message ("Could not announce CLI transaction: %s", e.message);
+				return 0;
+			}
+		}
+
+		void finish_tray_transaction (uint64 transaction_id, bool success,
+			bool full_default_upgrade) {
+			if (transaction_id == 0) {
+				return;
+			}
+			try {
+				UpdateCoordinator coordinator = Bus.get_proxy_sync (
+					BusType.SESSION, "org.manjaro.pamac.UpdateCoordinator1",
+					"/org/manjaro/pamac/UpdateCoordinator1");
+				coordinator.finish_transaction (transaction_id, success, full_default_upgrade);
+			} catch (Error e) {
+				message ("Could not announce completed CLI transaction: %s", e.message);
 			}
 		}
 
@@ -2987,7 +3005,8 @@ namespace Pamac {
 			run_transaction ();
 		}
 
-		void run_transaction () {
+		void run_transaction (bool full_default_upgrade = false) {
+			uint64 tray_transaction_id = begin_tray_transaction ();
 			var loop = new MainLoop ();
 			if (Posix.geteuid () != 0) {
 				// let's time to pkttyagent to get registred
@@ -2999,7 +3018,7 @@ namespace Pamac {
 						}
 						// Even a failed transaction may have installed some
 						// packages before failing; recompute the tray's status.
-						request_immediate_tray_check ();
+						finish_tray_transaction (tray_transaction_id, success, full_default_upgrade);
 						loop.quit ();
 					});
 					return false;
@@ -3010,7 +3029,7 @@ namespace Pamac {
 					if (!success) {
 						exit_status = 1;
 					}
-					request_immediate_tray_check ();
+					finish_tray_transaction (tray_transaction_id, success, full_default_upgrade);
 					loop.quit ();
 				});
 			}
@@ -3065,7 +3084,23 @@ namespace Pamac {
 				});
 			}
 			transaction.add_pkgs_to_upgrade (force_refresh);
-			run_transaction ();
+			// Only an unrestricted default-profile upgrade can establish that
+			// all actionable updates were applied. The CLI does not cover
+			// Flatpak updates, so those must be disabled in the default profile.
+			var default_config = new Config ("/etc/pamac.conf");
+			bool full_default_upgrade =
+				Posix.geteuid () != 0 &&
+				!upgrade_has_temporary_ignores &&
+				!transaction.download_only && !transaction.dry_run &&
+				!transaction.no_refresh &&
+				Environment.get_variable ("AURDEST") == null &&
+				!default_config.check_flatpak_updates &&
+				!default_config.download_updates &&
+				database.config.enable_aur == default_config.enable_aur &&
+				database.config.check_aur_updates == default_config.check_aur_updates &&
+				database.config.check_aur_vcs_updates == default_config.check_aur_vcs_updates &&
+				database.config.aur_build_dir == default_config.aur_build_dir;
+			run_transaction (full_default_upgrade);
 		}
 
 		public static int main (string[] args) {
