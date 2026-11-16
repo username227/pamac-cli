@@ -733,7 +733,7 @@ namespace Pamac {
 					display_checkupdates_help ();
 					return;
 				}
-				init_database ();
+				init_database (true);
 				if (aur) {
 					if (no_aur) {
 						display_checkupdates_help ();
@@ -780,7 +780,7 @@ namespace Pamac {
 				// Explicit AUR/VCS options, custom AURDEST/builddir, root,
 				// and side-effecting flags retain their original direct path.
 				// The coordinator returns its categorized repo/AUR subset;
-				// Flatpak remains outside the full CLI.
+				// Full CLI includes Flatpak when enabled in the default profile.
 				var shared_config = new Config ("/etc/pamac.conf");
 				bool shared_compatible =
 					!aur && !no_aur && !devel && !no_devel &&
@@ -834,7 +834,7 @@ namespace Pamac {
 					display_upgrade_help ();
 					return;
 				}
-				init_database ();
+				init_database (true);
 				if (aur) {
 					if (no_aur) {
 						display_upgrade_help ();
@@ -960,12 +960,15 @@ namespace Pamac {
 			}
 		}
 
-		void init_database () {
+		void init_database (bool include_flatpak = false) {
 			var config = new Config ("/etc/pamac.conf");
 			config.enable_appstream = false;
-			// not supported yet
+			// Snap remains outside the CLI. Flatpak is enabled for upgrade
+			// and checkupdates only, according to the user's Pamac settings.
 			config.enable_snap = false;
-			config.enable_flatpak = false;
+			if (!include_flatpak) {
+				config.enable_flatpak = false;
+			}
 			database = new Database (config);
 		}
 
@@ -2176,7 +2179,7 @@ namespace Pamac {
 			uint updates_nb = updates.repos_updates.length + updates.aur_updates.length + updates.flatpak_updates.length;
 			if (shared_compatible &&
 				(database.vcs_updates_deferred || !database.last_vcs_refresh_success ||
-				 !Database.updates_match_shared_output (updates, shared_output))) {
+				 !Database.updates_match_shared_output (updates, shared_output, true))) {
 				exit_status = 103;
 				stderr.printf ("Shared update snapshot changed; retry the check.\n");
 				return;
@@ -2184,7 +2187,8 @@ namespace Pamac {
 			// An explicit/custom-profile check must also distinguish an
 			// incomplete VCS scan from a confirmed "up to date" result.
 			int incomplete_status = database.vcs_updates_deferred ? 101 :
-				(!database.last_vcs_refresh_success ? 102 : 0);
+				(!database.last_vcs_refresh_success ? 102 :
+				(!database.last_flatpak_updates_success ? 103 : 0));
 			if (incomplete_status != 0) {
 				exit_status = incomplete_status;
 				stderr.printf ("Development package check incomplete (status %d).\n",
