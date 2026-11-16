@@ -92,10 +92,12 @@ namespace Pamac {
 
 		void display_current_line () {
 			if (current_line != "") {
-				// clean line
-				stdout.printf ("\r%*s\r", get_term_width (), "");
-				stdout.printf (current_line);
-				stdout.printf ("\n");
+				// Only clear an interactive terminal. Redirected output must
+				// contain complete lines without cursor-control sequences.
+				if (Posix.isatty (Posix.STDOUT_FILENO)) {
+					stdout.printf ("\r%*s\r", get_term_width (), "");
+				}
+				stdout.printf ("%s\n", current_line);
 				current_line = "";
 			}
 		}
@@ -160,8 +162,12 @@ namespace Pamac {
 				action_progress_completed = true;
 			} else if (can_redraw) {
 				current_line = "%s %*s".printf (action, width, current_status);
-				stdout.printf (current_line);
-				stdout.printf ("\r");
+				stdout.printf ("%s\r", current_line);
+			} else {
+				// Keep the latest status until the next action. The previous
+				// formatter silently dropped all intermediate progress when
+				// stdout was redirected (e.g. from an update script).
+				current_line = "%s %s".printf (action, current_status);
 			}
 			stdout.flush ();
 		}
