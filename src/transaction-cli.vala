@@ -432,6 +432,13 @@ namespace Pamac {
 			return answer;
 		}
 
+		// Separate Flatpak confirmation from the preceding pacman/AUR
+		// transaction. In particular, never reuse an earlier 'yes'.
+		public void begin_flatpak_upgrade_stage () {
+			summary_shown = false;
+			commit_transaction_answer = false;
+		}
+
 		void show_summary (TransactionSummary summary) {
 			uint64 dsize = 0;
 			uint64 rsize = 0;
@@ -661,8 +668,13 @@ namespace Pamac {
 			if (summary.to_upgrade.length != 0) {
 				foreach (unowned Package pkg in summary.to_upgrade) {
 					dsize += pkg.download_size;
-					var installed_pkg = database.get_installed_pkg (pkg.name);
-					isize += ((int64) pkg.installed_size - (int64) installed_pkg.installed_size);
+					// A Flatpak update is not present in libalpm's local DB.
+					if (pkg is AlpmPackage) {
+						unowned AlpmPackage? installed_pkg = database.get_installed_pkg (pkg.name);
+						if (installed_pkg != null) {
+							isize += ((int64) pkg.installed_size - (int64) installed_pkg.installed_size);
+						}
+					}
 					pkg_name_length = pkg.name.length;
 					if (pkg_name_length > name_length) {
 						name_length = pkg_name_length;
