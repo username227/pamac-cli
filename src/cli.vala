@@ -3018,11 +3018,11 @@ namespace Pamac {
 			bool apply_flatpak = include_flatpak &&
 				!transaction.dry_run && !transaction.download_only;
 			if (apply_flatpak) {
-				stdout.printf ("Checking Flatpak updates...\\n");
+				stdout.printf ("Checking Flatpak updates...\n");
 				stdout.flush ();
 				flatpak_checked = yield database.collect_flatpak_updates_async (flatpak_updates);
 				if (!flatpak_checked) {
-					stderr.printf ("Flatpak update discovery failed; continuing repository/AUR upgrades, but the final status cannot be verified.\\n");
+					stderr.printf ("Flatpak update discovery failed; continuing repository/AUR upgrades, but the final status cannot be verified.\n");
 				}
 			}
 			bool success = yield transaction.run_async ();
@@ -3036,7 +3036,7 @@ namespace Pamac {
 				foreach (unowned FlatpakPackage pkg in flatpak_updates) {
 					transaction.add_flatpak_to_upgrade (pkg);
 				}
-				stdout.printf ("\\nFlatpak updates (%u):\\n", flatpak_updates.length);
+				stdout.printf ("\nFlatpak updates (%u):\n", flatpak_updates.length);
 				stdout.flush ();
 				success = yield transaction.run_async ();
 			}
